@@ -2,6 +2,10 @@
   "name": "dsh-terminal",
   "version": "0.1.0",
   "description": "A VS Code style integrated terminal for the DeepSeek Harness Web GUI: bottom-docked panel, one-click toggle, configurable fonts. · DeepSeek Harness Web GUI 集成终端：VS Code 风格底部面板、一键开合、可配置字体。",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/io-oss/dsh-terminal.git"
+  },
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
