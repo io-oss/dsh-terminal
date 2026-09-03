@@ -1,0 +1,6 @@
+# dsh bundle patch: inserts this plugin into a profile's loader layer stack.
+# The entry id/name must match the plugin `name` exported by lib/index.js and
+# the client bundle id (both "dsh-terminal").
+- insert:
+    - id: dsh-terminal
+      name: 'dsh-terminal'
