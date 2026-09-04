@@ -17,6 +17,7 @@ import { TerminalSettings } from './TerminalSettings.tsx'
 import type { TerminalScope, TerminalSettingsValue } from './TerminalSettings.tsx'
 import { XTERM_CSS } from './xterm-css.ts'
 import { setAppearance, applyAppearanceToAll, applyThemeToAll, setWorkspaceRootProvider } from './terminal.ts'
+import { isShortcutCapturing, chordMatches } from './shortcut.ts'
 import { togglePanel } from './store.ts'
 
 const NS = 'dsh-terminal'
@@ -162,19 +163,21 @@ export function apply(ctx: TerminalClientContext): void {
     return ctx.on('theme/change', () => applyThemeToAll())
   }, 'dsh-terminal: theme sync')
 
-  // Ctrl+` toggles the panel (capture phase so it wins over xterm).
+  // User-configurable panel shortcut (window capture so it wins over xterm and
+  // the composer). The stored chord is a canonical, layout-independent string
+  // (default Ctrl+Shift+`); the recorder in Settings re-binds it.
   ctx.effect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.repeat) return
-      if (!event.ctrlKey || event.shiftKey || event.metaKey || event.altKey) return
-      if (event.key !== '`' && event.key !== '~') return
-      const enabled = scope.getSnapshot().value?.toggleKey !== false
-      if (!enabled) return
+      if (isShortcutCapturing()) return
+      const snapshot = scope.getSnapshot().value
+      if (snapshot?.toggleKey === false) return
+      if (!chordMatches(snapshot?.toggleShortcut, event)) return
       event.preventDefault()
       togglePanel()
     }
-    document.addEventListener('keydown', onKeyDown, true)
-    return () => document.removeEventListener('keydown', onKeyDown, true)
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
   }, 'dsh-terminal: panel shortcut')
 
   // Bottom-docked panel (host: shell.overlay, list, root scope).

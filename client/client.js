@@ -6151,8 +6151,14 @@ var zh = {
   fontFamilyHint: "\u7EC8\u7AEF\u4F7F\u7528\u7684\u5B57\u4F53\u3002\u7559\u7A7A\u8DDF\u968F dsh \u7684\u4EE3\u7801\u5B57\u4F53\uFF08--ds-font-family-code\uFF09\u3002",
   fontSizeTitle: "\u5B57\u53F7",
   fontSizeHint: "\u7EC8\u7AEF\u6587\u672C\u5B57\u53F7\uFF0810\u201324px\uFF09\u3002",
-  toggleKeyTitle: "\u5FEB\u6377\u952E",
-  toggleKeyHint: "\u542F\u7528\u540E\u53EF\u7528 Ctrl+` \u6253\u5F00\u6216\u6536\u8D77\u7EC8\u7AEF\u9762\u677F\u3002",
+  toggleKeyTitle: "\u542F\u7528\u5FEB\u6377\u952E",
+  toggleKeyHint: "\u5173\u95ED\u540E\u5FEB\u6377\u952E\u5931\u6548\uFF0C\u4EC5\u4FDD\u7559\u4FA7\u680F\u6309\u94AE\u5F00\u5173\u9762\u677F\u3002",
+  shortcutTitle: "\u5FEB\u6377\u952E\u7EC4\u5408",
+  shortcutHint: "\u7528\u4E8E\u6253\u5F00/\u6536\u8D77\u7EC8\u7AEF\u9762\u677F\u7684\u7EC4\u5408\u952E\uFF0C\u53EF\u81EA\u884C\u5F55\u5236\uFF08\u9700\u5305\u542B Ctrl\u3001Alt \u6216 Meta\uFF09\u3002\u9ED8\u8BA4 Ctrl+Shift+`\u3002",
+  shortcutChange: "\u66F4\u6539\u2026",
+  shortcutRestore: "\u6062\u590D\u9ED8\u8BA4",
+  shortcutCapturing: "\u8BF7\u6309\u4E0B\u65B0\u7684\u7EC4\u5408\u952E\u2026\uFF08Esc \u53D6\u6D88\uFF09",
+  shortcutNeedsModifier: "\u8BF7\u5305\u542B Ctrl\u3001Alt \u6216 Meta \u4FEE\u9970\u952E",
   reset: "\u6062\u590D\u9ED8\u8BA4",
   resetHint: "\u6062\u590D\u9ED8\u8BA4\u7EC8\u7AEF\u5916\u89C2\u4E0E\u5FEB\u6377\u952E\u8BBE\u7F6E\u3002",
   defaultOption: "\u9ED8\u8BA4\uFF08\u8DDF\u968F\u4EE3\u7801\u5B57\u4F53\uFF09",
@@ -6197,8 +6203,14 @@ var en = {
   fontFamilyHint: "The terminal font. Leave empty to follow the dsh code font (--ds-font-family-code).",
   fontSizeTitle: "Font size",
   fontSizeHint: "Terminal text size (10\u201324px).",
-  toggleKeyTitle: "Shortcut",
-  toggleKeyHint: "When enabled, Ctrl+` toggles the terminal panel.",
+  toggleKeyTitle: "Enable shortcut",
+  toggleKeyHint: "When off, the shortcut is ignored and only the sidebar button toggles the panel.",
+  shortcutTitle: "Shortcut keys",
+  shortcutHint: "The chord that toggles the panel \u2014 record your own (must include Ctrl, Alt or Meta). Default: Ctrl+Shift+`.",
+  shortcutChange: "Change\u2026",
+  shortcutRestore: "Restore default",
+  shortcutCapturing: "Press the new keys\u2026 (Esc to cancel)",
+  shortcutNeedsModifier: "Include Ctrl, Alt or Meta as a modifier",
   reset: "Reset to default",
   resetHint: "Restore the default terminal appearance and shortcut settings.",
   defaultOption: "Default (follow code font)",
@@ -7198,6 +7210,77 @@ function TerminalButton(props) {
 
 // src/client/TerminalSettings.tsx
 var import_react4 = require("react");
+
+// src/client/shortcut.ts
+var DEFAULT_TOGGLE_SHORTCUT = "ctrl+shift+backquote";
+var CODE_GLYPHS = {
+  backquote: "`",
+  minus: "-",
+  equal: "=",
+  bracketleft: "[",
+  bracketright: "]",
+  backslash: "\\",
+  semicolon: ";",
+  quote: "'",
+  comma: ",",
+  period: ".",
+  slash: "/",
+  intlbackslash: "\\",
+  space: "Space"
+};
+function isModifierOnly(key) {
+  return key === "Control" || key === "Shift" || key === "Alt" || key === "Meta";
+}
+function codeToken(code) {
+  if (/^Key[A-Z]$/.test(code)) return code[3].toLowerCase();
+  if (/^Digit[0-9]$/.test(code)) return code[5];
+  return code.toLowerCase();
+}
+function canonicalChordOf(event) {
+  if (isModifierOnly(event.key)) return null;
+  const key = event.key;
+  const code = event.code !== "" ? event.code : key;
+  if (isModifierOnly(code)) return null;
+  const parts = [];
+  if (event.ctrlKey) parts.push("ctrl");
+  if (event.altKey) parts.push("alt");
+  if (event.shiftKey) parts.push("shift");
+  if (event.metaKey) parts.push("meta");
+  if (parts.length === 0) return null;
+  if (!event.ctrlKey && !event.altKey && !event.metaKey) return null;
+  return [...parts, codeToken(code)].join("+");
+}
+function prettyToken(token) {
+  if (token === "ctrl") return "Ctrl";
+  if (token === "alt") return "Alt";
+  if (token === "shift") return "Shift";
+  if (token === "meta") return "Meta";
+  const glyph = CODE_GLYPHS[token];
+  if (glyph !== void 0) return glyph;
+  if (/^[a-z]$/.test(token)) return token.toUpperCase();
+  if (/^\d$/.test(token)) return token;
+  return token.charAt(0).toUpperCase() + token.slice(1);
+}
+function prettyChord(canonical) {
+  if (canonical === void 0) canonical = DEFAULT_TOGGLE_SHORTCUT;
+  const parts = canonical.trim().split("+").filter((part) => part !== "");
+  if (parts.length < 2) return prettyToken(parts[0] ?? "");
+  return parts.map(prettyToken).join("+");
+}
+function chordMatches(canonical, event) {
+  if (canonical === void 0 || canonical.trim() === "") return false;
+  const actual = canonicalChordOf(event);
+  return actual !== null && actual === canonical.trim().toLowerCase();
+}
+var capturing = false;
+function setShortcutCapturing(value) {
+  capturing = value;
+}
+function isShortcutCapturing() {
+  return capturing;
+}
+
+// src/client/TerminalSettings.tsx
 var PRESET_FONTS = [
   "DejaVu Sans Mono",
   "JetBrains Mono",
@@ -7209,12 +7292,18 @@ var PRESET_FONTS = [
   "monospace"
 ];
 var FONT_SIZES = Array.from({ length: 15 }, (_, index) => index + 10);
+function normalizeShortcut(value) {
+  if (typeof value !== "string") return DEFAULT_TOGGLE_SHORTCUT;
+  const trimmed = value.trim().toLowerCase();
+  return trimmed.includes("+") ? trimmed : DEFAULT_TOGGLE_SHORTCUT;
+}
 function currentValue(scope) {
   const value = scope.getSnapshot().value;
   return {
     fontFamily: value?.fontFamily ?? "",
     fontSize: typeof value?.fontSize === "number" && Number.isFinite(value.fontSize) ? value.fontSize : 13,
-    toggleKey: value?.toggleKey !== false
+    toggleKey: value?.toggleKey !== false,
+    toggleShortcut: normalizeShortcut(value?.toggleShortcut)
   };
 }
 function TerminalSettings(props) {
@@ -7222,6 +7311,9 @@ function TerminalSettings(props) {
   const [settings, setSettings] = (0, import_react4.useState)(() => currentValue(scope));
   const [ready, setReady] = (0, import_react4.useState)(scope.getSnapshot().status);
   const [customText, setCustomText] = (0, import_react4.useState)("");
+  const [capturing2, setCapturing] = (0, import_react4.useState)(false);
+  const [captureWarn, setCaptureWarn] = (0, import_react4.useState)(false);
+  const captureWarnTimer = (0, import_react4.useRef)(null);
   (0, import_react4.useEffect)(() => {
     const sync = () => {
       const snapshot = scope.getSnapshot();
@@ -7231,6 +7323,45 @@ function TerminalSettings(props) {
     sync();
     return scope.subscribe(sync);
   }, [scope]);
+  (0, import_react4.useEffect)(() => {
+    setShortcutCapturing(capturing2);
+    if (!capturing2 && captureWarnTimer.current !== null) {
+      clearTimeout(captureWarnTimer.current);
+      captureWarnTimer.current = null;
+      setCaptureWarn(false);
+    }
+    return () => {
+      setShortcutCapturing(false);
+      if (captureWarnTimer.current !== null) clearTimeout(captureWarnTimer.current);
+    };
+  }, [capturing2]);
+  (0, import_react4.useEffect)(() => {
+    if (!capturing2) return void 0;
+    const onKeyDown = (event) => {
+      if (event.key === "Escape" && !event.ctrlKey && !event.altKey && !event.metaKey) {
+        event.preventDefault();
+        event.stopPropagation();
+        setCapturing(false);
+        return;
+      }
+      const chord = canonicalChordOf(event);
+      if (chord === null) {
+        event.preventDefault();
+        event.stopPropagation();
+        setCaptureWarn(true);
+        if (captureWarnTimer.current !== null) clearTimeout(captureWarnTimer.current);
+        captureWarnTimer.current = setTimeout(() => setCaptureWarn(false), 1600);
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      setSettings((previous) => ({ ...previous, toggleShortcut: chord }));
+      void scope.set("toggleShortcut", chord);
+      setCapturing(false);
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [capturing2, scope]);
   const rowStyle = { display: "flex", alignItems: "center", gap: 12, padding: "12px 0" };
   const labelBoxStyle = { display: "flex", flexDirection: "column", flex: "1", gap: 3, minWidth: 0 };
   const labelStyle = { fontSize: 13, lineHeight: "20px" };
@@ -7291,16 +7422,25 @@ function TerminalSettings(props) {
     setSettings((previous) => ({ ...previous, fontSize: size }));
     void scope.set("fontSize", size);
   };
-  const toggleShortcut = () => {
+  const toggleEnabled = () => {
     const next = !settings.toggleKey;
     setSettings((previous) => ({ ...previous, toggleKey: next }));
     void scope.set("toggleKey", next);
   };
+  const startCapturing = () => {
+    setCaptureWarn(false);
+    setCapturing(true);
+  };
+  const restoreDefaultShortcut = () => {
+    setSettings((previous) => ({ ...previous, toggleShortcut: DEFAULT_TOGGLE_SHORTCUT }));
+    void scope.set("toggleShortcut", DEFAULT_TOGGLE_SHORTCUT);
+  };
   const resetAll = () => {
-    setSettings({ fontFamily: "", fontSize: 13, toggleKey: true });
+    setSettings({ fontFamily: "", fontSize: 13, toggleKey: true, toggleShortcut: DEFAULT_TOGGLE_SHORTCUT });
     void scope.unset("fontFamily");
     void scope.unset("fontSize");
     void scope.unset("toggleKey");
+    void scope.unset("toggleShortcut");
   };
   const isPreset = settings.fontFamily === "" || PRESET_FONTS.includes(settings.fontFamily);
   const selectValue = isPreset ? settings.fontFamily : "__custom__";
@@ -7393,7 +7533,7 @@ function TerminalSettings(props) {
         role: "switch",
         "aria-checked": settings.toggleKey,
         disabled,
-        onClick: toggleShortcut,
+        onClick: toggleEnabled,
         style: {
           display: "inline-flex",
           alignItems: "center",
@@ -7419,6 +7559,80 @@ function TerminalSettings(props) {
           }
         })
       })
+    ),
+    (0, import_react4.createElement)(
+      "div",
+      { style: rowStyle },
+      (0, import_react4.createElement)(
+        "div",
+        { style: labelBoxStyle },
+        (0, import_react4.createElement)("span", { style: labelStyle }, t("shortcutTitle")),
+        (0, import_react4.createElement)("span", { style: hintStyle }, t("shortcutHint"))
+      ),
+      capturing2 ? (0, import_react4.createElement)(
+        "span",
+        {
+          style: {
+            color: "var(--dsw-alias-brand-primary)",
+            fontSize: 12,
+            lineHeight: "20px",
+            fontFamily: "var(--ds-font-family-code, monospace)",
+            whiteSpace: "nowrap"
+          }
+        },
+        captureWarn ? t("shortcutNeedsModifier") : t("shortcutCapturing")
+      ) : (0, import_react4.createElement)(
+        "div",
+        { style: { display: "flex", alignItems: "center", gap: 8, flex: "none" } },
+        (0, import_react4.createElement)("kbd", {
+          style: {
+            minWidth: 96,
+            textAlign: "center",
+            boxSizing: "border-box",
+            padding: "4px 10px",
+            borderRadius: 7,
+            fontSize: 12,
+            lineHeight: "18px",
+            color: "var(--dsw-alias-label-primary)",
+            background: "var(--dsw-alias-bg-layer-2)",
+            border: "1px solid var(--dsw-alias-border-l3)",
+            fontFamily: "var(--ds-font-family-code, monospace)",
+            whiteSpace: "nowrap"
+          }
+        }, prettyChord(settings.toggleShortcut)),
+        (0, import_react4.createElement)("button", {
+          type: "button",
+          onClick: startCapturing,
+          disabled,
+          style: {
+            font: "inherit",
+            cursor: "pointer",
+            color: "var(--dsw-alias-label-secondary)",
+            background: "var(--dsw-alias-bg-layer-1)",
+            border: "1px solid var(--dsw-alias-border-l3)",
+            borderRadius: 7,
+            padding: "4px 10px",
+            fontSize: 12,
+            lineHeight: "18px"
+          }
+        }, t("shortcutChange")),
+        settings.toggleShortcut !== DEFAULT_TOGGLE_SHORTCUT ? (0, import_react4.createElement)("button", {
+          type: "button",
+          onClick: restoreDefaultShortcut,
+          disabled,
+          style: {
+            font: "inherit",
+            cursor: "pointer",
+            color: "var(--dsw-alias-label-tertiary)",
+            background: "transparent",
+            border: "none",
+            borderRadius: 7,
+            padding: "4px 8px",
+            fontSize: 12,
+            lineHeight: "18px"
+          }
+        }, t("shortcutRestore")) : null
+      )
     ),
     (0, import_react4.createElement)(
       "div",
@@ -7734,15 +7948,15 @@ function apply(ctx) {
   ctx.effect(() => {
     const onKeyDown = (event) => {
       if (event.repeat) return;
-      if (!event.ctrlKey || event.shiftKey || event.metaKey || event.altKey) return;
-      if (event.key !== "`" && event.key !== "~") return;
-      const enabled = scope.getSnapshot().value?.toggleKey !== false;
-      if (!enabled) return;
+      if (isShortcutCapturing()) return;
+      const snapshot = scope.getSnapshot().value;
+      if (snapshot?.toggleKey === false) return;
+      if (!chordMatches(snapshot?.toggleShortcut, event)) return;
       event.preventDefault();
       togglePanel();
     };
-    document.addEventListener("keydown", onKeyDown, true);
-    return () => document.removeEventListener("keydown", onKeyDown, true);
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
   }, "dsh-terminal: panel shortcut");
   ctx.slots.inject("shell.overlay", () => ctx.slots.register({
     name: "shell.overlay",

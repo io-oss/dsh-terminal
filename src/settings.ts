@@ -27,8 +27,14 @@ export const TerminalSettings = z.object({
   fontFamily: z.string().default(''),
   /** Terminal font size in px (clamped to a sane range by the client UI). */
   fontSize: z.number().min(8).max(32).default(13),
-  /** Whether Ctrl+` toggles the terminal panel. */
+  /** Whether the panel shortcut is enabled at all. */
   toggleKey: z.boolean().default(true),
+  /**
+   * The user-customizable panel shortcut as a canonical chord string
+   * (`ctrl+shift+backquote` etc., layout-independent physical key codes).
+   * Empty/unknown values disable the shortcut even when toggleKey is on.
+   */
+  toggleShortcut: z.string().default('ctrl+shift+backquote'),
 })
 
 export type TerminalSettingsValue = Schemastery.TypeT<typeof TerminalSettings>
@@ -38,4 +44,5 @@ export const TERMINAL_SETTINGS_BASE: TerminalSettingsValue = {
   fontFamily: '',
   fontSize: 13,
   toggleKey: true,
+  toggleShortcut: 'ctrl+shift+backquote',
 }

@@ -1,12 +1,18 @@
 /**
  * "Terminal" settings section: terminal font family, font size and the
- * Ctrl+` panel shortcut, persisted through the `dsh-terminal` settings scope.
- * Every change is applied live by the plugin entry's subscription, so an open
- * terminal picks it up immediately.
+ * (user-recordable) panel shortcut, persisted through the `dsh-terminal`
+ * settings scope. Every change is applied live by the plugin entry's
+ * subscription, so an open terminal picks it up immediately.
  */
 
-import { createElement as h, useEffect, useState } from 'react'
+import { createElement as h, useEffect, useRef, useState } from 'react'
 import type { ReactElement, ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
+import {
+  DEFAULT_TOGGLE_SHORTCUT,
+  canonicalChordOf,
+  prettyChord,
+  setShortcutCapturing,
+} from './shortcut.ts'
 
 export type Translate = (key: string, params?: Record<string, unknown>) => string
 
@@ -22,6 +28,7 @@ export interface TerminalSettingsValue {
   fontFamily: string
   fontSize: number
   toggleKey: boolean
+  toggleShortcut: string
 }
 
 interface TerminalSettingsProps {
@@ -42,12 +49,20 @@ const PRESET_FONTS = [
 
 const FONT_SIZES = Array.from({ length: 15 }, (_, index) => index + 10)
 
+/** Normalize a stored shortcut value (unknown garbage falls back to default). */
+function normalizeShortcut(value: unknown): string {
+  if (typeof value !== 'string') return DEFAULT_TOGGLE_SHORTCUT
+  const trimmed = value.trim().toLowerCase()
+  return trimmed.includes('+') ? trimmed : DEFAULT_TOGGLE_SHORTCUT
+}
+
 function currentValue(scope: TerminalScope<TerminalSettingsValue>): TerminalSettingsValue {
   const value = scope.getSnapshot().value
   return {
     fontFamily: value?.fontFamily ?? '',
     fontSize: typeof value?.fontSize === 'number' && Number.isFinite(value.fontSize) ? value.fontSize : 13,
     toggleKey: value?.toggleKey !== false,
+    toggleShortcut: normalizeShortcut(value?.toggleShortcut),
   }
 }
 
@@ -56,6 +71,9 @@ export function TerminalSettings(props: TerminalSettingsProps): ReactElement {
   const [settings, setSettings] = useState<TerminalSettingsValue>(() => currentValue(scope))
   const [ready, setReady] = useState(scope.getSnapshot().status)
   const [customText, setCustomText] = useState('')
+  const [capturing, setCapturing] = useState(false)
+  const [captureWarn, setCaptureWarn] = useState(false)
+  const captureWarnTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     const sync = () => {
@@ -66,6 +84,51 @@ export function TerminalSettings(props: TerminalSettingsProps): ReactElement {
     sync()
     return scope.subscribe(sync)
   }, [scope])
+
+  // Keep the shared recorder flag in sync (the global toggle handler skips
+  // while a new chord is being recorded) and clear it when we unmount.
+  useEffect(() => {
+    setShortcutCapturing(capturing)
+    if (!capturing && captureWarnTimer.current !== null) {
+      clearTimeout(captureWarnTimer.current)
+      captureWarnTimer.current = null
+      setCaptureWarn(false)
+    }
+    return () => {
+      setShortcutCapturing(false)
+      if (captureWarnTimer.current !== null) clearTimeout(captureWarnTimer.current)
+    }
+  }, [capturing])
+
+  // Record the next valid chord while capturing.
+  useEffect(() => {
+    if (!capturing) return undefined
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape' && !event.ctrlKey && !event.altKey && !event.metaKey) {
+        event.preventDefault()
+        event.stopPropagation()
+        setCapturing(false)
+        return
+      }
+      const chord = canonicalChordOf(event)
+      if (chord === null) {
+        // A bare modifier or a chord without Ctrl/Alt/Meta is not a shortcut.
+        event.preventDefault()
+        event.stopPropagation()
+        setCaptureWarn(true)
+        if (captureWarnTimer.current !== null) clearTimeout(captureWarnTimer.current)
+        captureWarnTimer.current = setTimeout(() => setCaptureWarn(false), 1600)
+        return
+      }
+      event.preventDefault()
+      event.stopPropagation()
+      setSettings((previous) => ({ ...previous, toggleShortcut: chord }))
+      void scope.set('toggleShortcut', chord)
+      setCapturing(false)
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [capturing, scope])
 
   const rowStyle: Record<string, string | number> = { display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0' }
   const labelBoxStyle: Record<string, string | number> = { display: 'flex', flexDirection: 'column', flex: '1', gap: 3, minWidth: 0 }
@@ -112,16 +175,25 @@ export function TerminalSettings(props: TerminalSettingsProps): ReactElement {
     setSettings((previous) => ({ ...previous, fontSize: size }))
     void scope.set('fontSize', size)
   }
-  const toggleShortcut = (): void => {
+  const toggleEnabled = (): void => {
     const next = !settings.toggleKey
     setSettings((previous) => ({ ...previous, toggleKey: next }))
     void scope.set('toggleKey', next)
   }
+  const startCapturing = (): void => {
+    setCaptureWarn(false)
+    setCapturing(true)
+  }
+  const restoreDefaultShortcut = (): void => {
+    setSettings((previous) => ({ ...previous, toggleShortcut: DEFAULT_TOGGLE_SHORTCUT }))
+    void scope.set('toggleShortcut', DEFAULT_TOGGLE_SHORTCUT)
+  }
   const resetAll = (): void => {
-    setSettings({ fontFamily: '', fontSize: 13, toggleKey: true })
+    setSettings({ fontFamily: '', fontSize: 13, toggleKey: true, toggleShortcut: DEFAULT_TOGGLE_SHORTCUT })
     void scope.unset('fontFamily')
     void scope.unset('fontSize')
     void scope.unset('toggleKey')
+    void scope.unset('toggleShortcut')
   }
 
   const isPreset = settings.fontFamily === '' || PRESET_FONTS.includes(settings.fontFamily)
@@ -205,7 +277,7 @@ export function TerminalSettings(props: TerminalSettingsProps): ReactElement {
         role: 'switch',
         'aria-checked': settings.toggleKey,
         disabled,
-        onClick: toggleShortcut,
+        onClick: toggleEnabled,
         style: {
           display: 'inline-flex', alignItems: 'center', cursor: disabled ? 'default' : 'pointer',
           width: 36, height: 20, padding: 2, boxSizing: 'border-box', border: 'none', borderRadius: 10,
@@ -221,6 +293,51 @@ export function TerminalSettings(props: TerminalSettingsProps): ReactElement {
           },
         }),
       }),
+    ),
+
+    h('div', { style: rowStyle },
+      h('div', { style: labelBoxStyle },
+        h('span', { style: labelStyle }, t('shortcutTitle')),
+        h('span', { style: hintStyle }, t('shortcutHint')),
+      ),
+      capturing
+        ? h('span', {
+            style: {
+              color: 'var(--dsw-alias-brand-primary)', fontSize: 12, lineHeight: '20px',
+              fontFamily: 'var(--ds-font-family-code, monospace)', whiteSpace: 'nowrap',
+            },
+          },
+            captureWarn ? t('shortcutNeedsModifier') : t('shortcutCapturing'),
+          )
+        : h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flex: 'none' } },
+            h('kbd', {
+              style: {
+                minWidth: 96, textAlign: 'center', boxSizing: 'border-box',
+                padding: '4px 10px', borderRadius: 7, fontSize: 12, lineHeight: '18px',
+                color: 'var(--dsw-alias-label-primary)', background: 'var(--dsw-alias-bg-layer-2)',
+                border: '1px solid var(--dsw-alias-border-l3)',
+                fontFamily: 'var(--ds-font-family-code, monospace)', whiteSpace: 'nowrap',
+              },
+            }, prettyChord(settings.toggleShortcut)),
+            h('button', {
+              type: 'button', onClick: startCapturing, disabled,
+              style: {
+                font: 'inherit', cursor: 'pointer', color: 'var(--dsw-alias-label-secondary)',
+                background: 'var(--dsw-alias-bg-layer-1)', border: '1px solid var(--dsw-alias-border-l3)',
+                borderRadius: 7, padding: '4px 10px', fontSize: 12, lineHeight: '18px',
+              },
+            }, t('shortcutChange')),
+            settings.toggleShortcut !== DEFAULT_TOGGLE_SHORTCUT
+              ? h('button', {
+                  type: 'button', onClick: restoreDefaultShortcut, disabled,
+                  style: {
+                    font: 'inherit', cursor: 'pointer', color: 'var(--dsw-alias-label-tertiary)',
+                    background: 'transparent', border: 'none', borderRadius: 7,
+                    padding: '4px 8px', fontSize: 12, lineHeight: '18px',
+                  },
+                }, t('shortcutRestore'))
+              : null,
+          ),
     ),
 
     h('div', { style: previewStyle },

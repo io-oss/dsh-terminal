@@ -17,15 +17,27 @@ export declare const TerminalSettings: z<Schemastery.ObjectS<{
     fontFamily: z<string, string>;
     /** Terminal font size in px (clamped to a sane range by the client UI). */
     fontSize: z<number, number>;
-    /** Whether Ctrl+` toggles the terminal panel. */
+    /** Whether the panel shortcut is enabled at all. */
     toggleKey: z<boolean, boolean>;
+    /**
+     * The user-customizable panel shortcut as a canonical chord string
+     * (`ctrl+shift+backquote` etc., layout-independent physical key codes).
+     * Empty/unknown values disable the shortcut even when toggleKey is on.
+     */
+    toggleShortcut: z<string, string>;
 }>, Schemastery.ObjectT<{
     /** CSS font-family stack for xterm, or '' to follow the dsh code font. */
     fontFamily: z<string, string>;
     /** Terminal font size in px (clamped to a sane range by the client UI). */
     fontSize: z<number, number>;
-    /** Whether Ctrl+` toggles the terminal panel. */
+    /** Whether the panel shortcut is enabled at all. */
     toggleKey: z<boolean, boolean>;
+    /**
+     * The user-customizable panel shortcut as a canonical chord string
+     * (`ctrl+shift+backquote` etc., layout-independent physical key codes).
+     * Empty/unknown values disable the shortcut even when toggleKey is on.
+     */
+    toggleShortcut: z<string, string>;
 }>>;
 export type TerminalSettingsValue = Schemastery.TypeT<typeof TerminalSettings>;
 /** Composition defaults this plugin contributes. */

@@ -5,7 +5,7 @@ A VS Code style integrated terminal plugin for the DeepSeek Harness Web GUI (`ds
 ## Features
 
 - **Bottom panel layout (VS Code style)**: the terminal docks as a full-width strip at the bottom of the window; drag the top edge to resize, double-click the header to maximize/restore.
-- **One-click toggle**: a terminal button at the bottom of the sidebar (next to Settings) opens/hides the panel; `Ctrl+\`` also toggles it (can be disabled in settings).
+- **One-click toggle**: a terminal button at the bottom of the sidebar (next to Settings) opens/hides the panel; `Ctrl+Shift+\`` toggles it by default (works with DevTools open); the chord is fully customizable (or disableable) in settings.
 - **Configurable fonts**: Settings → Terminal lets you pick the terminal font family (empty = follow the dsh code font) and size (10–24 px); changes apply immediately and persist.
 - **Usual terminal features**:
   - Multiple tabs (new / close / switch);
@@ -42,7 +42,7 @@ dsh plugin --profile web add /absolute/path/to/dsh-terminal
 
 | Action | Where / shortcut |
 | --- | --- |
-| Open / hide the terminal panel | sidebar terminal button; `Ctrl+\`` |
+| Open / hide the terminal panel | sidebar terminal button; shortcut defaults to `Ctrl+Shift+\`` (customizable in settings) |
 | New terminal | `+` in the panel header (an empty opened panel creates the first one automatically) |
 | Close a tab | the `×` next to the active tab (terminates that shell) |
 | Resize panel height | drag the thin strip at the top of the panel |
@@ -57,7 +57,7 @@ Sessions keep running while the panel is hidden (like VS Code); closing a tab, r
 
 - **Font family**: presets plus a “Custom…” free-text entry for any CSS font stack; empty (default) follows the dsh code font.
 - **Font size**: 10–24 px.
-- **Shortcut**: enables/disables `Ctrl+\`` for the panel.
+- **Shortcut**: defaults to `Ctrl+Shift+\``; click “Change…” to record a custom chord (needs a Ctrl/Alt/Meta modifier), restore the default, or disable shortcuts entirely.
 
 ## How it works
 
