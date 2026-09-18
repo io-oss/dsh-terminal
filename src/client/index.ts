@@ -64,6 +64,15 @@ interface SessionSummaryLike {
   id?: string
   cwd?: string
   blank?: boolean
+  /** Local reference counts; the main view holds the Session it displays. */
+  retainedBy?: { mainView?: number }
+}
+
+interface SessionListSnapshotLike {
+  /** Selection mirror of dsh <= 0.1.6-alpha.1; removed in 0.1.6-alpha.2. */
+  current?: string
+  ids?: readonly string[]
+  byId?: Record<string, SessionSummaryLike>
 }
 
 interface WorkspaceLike {
@@ -74,9 +83,44 @@ interface WorkspaceLike {
   sessionIds?: readonly string[]
 }
 
+/** The `ctx.workspaces` client service face (optional for this plugin). */
+interface WorkspaceServiceLike {
+  list?: { getSnapshot?: () => { items?: readonly WorkspaceLike[] } | undefined }
+}
+
 interface WorkspaceHost {
-  sessions?: { list?: { getSnapshot?: () => { current?: string; byId?: Record<string, SessionSummaryLike> } } }
-  workspaces?: { getSnapshot?: () => { items?: WorkspaceLike[] } }
+  sessions?: { list?: { getSnapshot?: () => SessionListSnapshotLike | undefined } }
+  /** Cordis service lookup; `workspaces` is read lazily so it stays optional. */
+  get?: (name: string) => unknown
+}
+
+/**
+ * Resolve the currently displayed session identity.
+ *
+ * dsh 0.1.6-alpha.2 dropped the `current` field from the session-list snapshot
+ * (the selection now lives in the ui-session binding source), so the supported
+ * signal is the main view's retain count on the row — the same lookup the
+ * official layout/settings plugins perform.
+ */
+function currentSessionId(snapshot: SessionListSnapshotLike | undefined): string | undefined {
+  if (snapshot === undefined) return undefined
+  // Older hosts mirror the selection directly; keep reading it when present.
+  const legacy = snapshot.current
+  if (typeof legacy === 'string' && legacy !== '') return legacy
+  const byId = snapshot.byId
+  if (byId === undefined) return undefined
+  for (const id of snapshot.ids ?? Object.keys(byId)) {
+    if ((byId[id]?.retainedBy?.mainView ?? 0) > 0) return id
+  }
+  return undefined
+}
+
+/** The optional `workspaces` mirror (`ctx.workspaces.list`), or undefined. */
+function workspaceItems(host: WorkspaceHost): readonly WorkspaceLike[] | undefined {
+  if (typeof host.get !== 'function') return undefined
+  const service = host.get('workspaces') as WorkspaceServiceLike | undefined
+  const items = service?.list?.getSnapshot?.()?.items
+  return Array.isArray(items) ? items : undefined
 }
 
 /**
@@ -91,17 +135,16 @@ interface WorkspaceHost {
 function currentWorkspaceRoot(host: WorkspaceHost): string | undefined {
   try {
     const snapshot = host.sessions?.list?.getSnapshot?.()
-    const currentId = snapshot?.current
-    if (typeof currentId === 'string') {
-      const summary = snapshot?.byId?.[currentId]
-      const cwd = summary?.cwd
+    const currentId = currentSessionId(snapshot)
+    if (currentId !== undefined) {
+      const cwd = snapshot?.byId?.[currentId]?.cwd
       if (typeof cwd === 'string' && cwd !== '') return cwd
     }
-    const items = host.workspaces?.getSnapshot?.()?.items
-    if (Array.isArray(items) && items.length > 0) {
-      const owned = typeof currentId === 'string'
-        ? items.find((workspace) => workspace.sessionIds?.includes(currentId) === true)
-        : undefined
+    const items = workspaceItems(host)
+    if (items !== undefined && items.length > 0) {
+      const owned = currentId === undefined
+        ? undefined
+        : items.find((workspace) => workspace.sessionIds?.includes(currentId) === true)
       const chosen = owned ?? [...items].sort((left, right) =>
         (right.updatedAt ?? right.createdAt ?? '').localeCompare(left.updatedAt ?? left.createdAt ?? ''),
       )[0]
@@ -119,9 +162,10 @@ export function apply(ctx: TerminalClientContext): void {
   const t = ctx.locale.bind(NS)
   const scope = ctx.settingsScope.bind<TerminalSettingsValue>({ namespace: NS })
 
-  // Optional: resolve the current workspace directory so freshly opened shells
-  // start there instead of the host process cwd. Only `sessions` is required;
-  // the workspaces mirror (if present) is used as a fallback source.
+  // Resolve the current workspace directory so freshly opened shells start
+  // there instead of the host process cwd. `sessions` drives the lookup and is
+  // therefore required; `workspaces` is read lazily through the injected
+  // context so a profile without it merely loses the fallback source.
   ctx.inject(['sessions'], (hostCtx: unknown) => {
     const host = hostCtx as WorkspaceHost
     setWorkspaceRootProvider(() => currentWorkspaceRoot(host))

@@ -7883,18 +7883,34 @@ var inject = ["slots", "locale", "settingsScope", "theme"];
 function clampFontSize(value) {
   return typeof value === "number" && Number.isFinite(value) ? Math.min(32, Math.max(8, value)) : 13;
 }
+function currentSessionId(snapshot) {
+  if (snapshot === void 0) return void 0;
+  const legacy = snapshot.current;
+  if (typeof legacy === "string" && legacy !== "") return legacy;
+  const byId = snapshot.byId;
+  if (byId === void 0) return void 0;
+  for (const id of snapshot.ids ?? Object.keys(byId)) {
+    if ((byId[id]?.retainedBy?.mainView ?? 0) > 0) return id;
+  }
+  return void 0;
+}
+function workspaceItems(host) {
+  if (typeof host.get !== "function") return void 0;
+  const service = host.get("workspaces");
+  const items = service?.list?.getSnapshot?.()?.items;
+  return Array.isArray(items) ? items : void 0;
+}
 function currentWorkspaceRoot2(host) {
   try {
     const snapshot = host.sessions?.list?.getSnapshot?.();
-    const currentId = snapshot?.current;
-    if (typeof currentId === "string") {
-      const summary = snapshot?.byId?.[currentId];
-      const cwd = summary?.cwd;
+    const currentId = currentSessionId(snapshot);
+    if (currentId !== void 0) {
+      const cwd = snapshot?.byId?.[currentId]?.cwd;
       if (typeof cwd === "string" && cwd !== "") return cwd;
     }
-    const items = host.workspaces?.getSnapshot?.()?.items;
-    if (Array.isArray(items) && items.length > 0) {
-      const owned = typeof currentId === "string" ? items.find((workspace) => workspace.sessionIds?.includes(currentId) === true) : void 0;
+    const items = workspaceItems(host);
+    if (items !== void 0 && items.length > 0) {
+      const owned = currentId === void 0 ? void 0 : items.find((workspace) => workspace.sessionIds?.includes(currentId) === true);
       const chosen = owned ?? [...items].sort(
         (left, right) => (right.updatedAt ?? right.createdAt ?? "").localeCompare(left.updatedAt ?? left.createdAt ?? "")
       )[0];

@@ -7,3 +7,4 @@ node_modules/
 # Build outputs are deliberately TRACKED (see README): profile installs are
 # link:/git consumers that never run a build step, so lib/ and client/ must
 # travel with the repository. Do not ignore them.
+.dsh/
