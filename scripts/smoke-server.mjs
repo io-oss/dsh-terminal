@@ -3,23 +3,45 @@
  *
  * It fakes just enough cordis ctx to run apply(): a `webServer` service whose
  * registerUpgrade hooks node:http's `upgrade` event (the same shape as
- * @deepseek-ai/dsh-host-webserver), a no-op `settings` service, and no
+ * @deepseek-ai/dsh-host-webserver), a `settings` service, and no
  * `connection`/`sandboxPolicy` (so the graceful-degradation paths run too).
+ *
+ * `settings` is faked in both host generations, selected by SMOKE_SETTINGS:
+ *
+ *   register (default) — dsh <= 0.1.6: the namespace registry that exposes
+ *                        `register(ns, schema, { base })`.
+ *   forms              — dsh >= 0.1.7: `SettingsForms`, which exposes NO
+ *                        `register`; persistence rides the entry's own
+ *                        exported `Config`, so apply() must simply skip it.
  *
  * Then it drives one real WebSocket session end to end:
  *   connect → open → echo input → output received → resize → shell exit.
  *
- * Usage: node scripts/smoke-server.mjs
+ * Usage: SMOKE_SETTINGS=forms node scripts/smoke-server.mjs
  */
 
 import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { apply } from '../lib/index.js'
 
-const PORT = 48321
+const PORT = Number(process.env.SMOKE_PORT ?? 48321)
+const SETTINGS_SHAPE = process.env.SMOKE_SETTINGS ?? 'register'
+if (SETTINGS_SHAPE !== 'register' && SETTINGS_SHAPE !== 'forms') {
+  throw new Error(`SMOKE_SETTINGS must be "register" or "forms", got ${SETTINGS_SHAPE}`)
+}
 
 // --- minimal host fakes -------------------------------------------------
 const routes = new Map() // path -> upgrade handler
+/** Namespaces the 0.1.6-style registry accepted. */
+const registered = []
+/** dsh >= 0.1.7 `SettingsForms`: describe/update/replace/mutate, never register. */
+const formsService = {
+  describe: () => [],
+  update: async () => {},
+  replace: async () => {},
+  mutate: async () => {},
+}
+
 const httpServer = createServer((_req, res) => {
   res.writeHead(404).end()
 })
@@ -35,12 +57,16 @@ httpServer.on('upgrade', (req, socket, head) => {
   })
 })
 
+const settingsService = SETTINGS_SHAPE === 'register'
+  ? { register(ns, _schema, options) { registered.push({ ns, base: options?.base }) } }
+  : formsService
+
 const fakeCtx = {
   inject(names, cb) {
     const present = names.every((name) => name === 'webServer' || name === 'settings')
     if (!present) return () => {}
     const fakeHost = {
-      settings: { register() {} },
+      settings: settingsService,
       webServer: {
         registerUpgrade(route) {
           routes.set(route.path, route.handler)
@@ -48,7 +74,8 @@ const fakeCtx = {
         },
       },
     }
-    return cb(fakeHost) ?? (() => {})
+    const disposer = cb(fakeHost)
+    return disposer ?? (() => {})
   },
   get() {
     throw new Error('sandboxPolicy not mounted in smoke host')
@@ -107,8 +134,20 @@ if (!received.includes(marker)) throw new Error(`pty output missing marker; got 
 if (!received.includes('/tmp')) throw new Error(`pty did not run in /tmp; got ${JSON.stringify(received.slice(-200))}`)
 console.log('ok: ready + echo output + cwd honoured + exit received')
 
+if (SETTINGS_SHAPE === 'register') {
+  const entry = registered.find((row) => row.ns === 'dsh-terminal')
+  if (entry === undefined) throw new Error(`0.1.6 settings registry was not called: ${JSON.stringify(registered)}`)
+  if (entry.base?.toggleShortcut !== 'ctrl+shift+backquote') {
+    throw new Error(`0.1.6 base layer missing: ${JSON.stringify(entry.base)}`)
+  }
+  console.log('ok: 0.1.6 settings.register path (namespace + base layer)')
+} else {
+  if (registered.length !== 0) throw new Error('0.1.7 settings face must not be written through a registry')
+  console.log('ok: 0.1.7 SettingsForms path (register skipped, endpoint intact)')
+}
+
 ws.close()
 httpServer.close()
-console.log('server smoke passed')
+console.log(`server smoke passed (SMOKE_SETTINGS=${SETTINGS_SHAPE})`)
 // The host half keeps a heartbeat interval alive; exit explicitly in this dev script.
 process.exit(0)

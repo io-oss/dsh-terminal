@@ -15,7 +15,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 export declare const name = "dsh-terminal";
-export { TerminalSettings, TERMINAL_SETTINGS_NS, TERMINAL_SETTINGS_BASE } from './settings.js';
+export { Config, TerminalSettings, TERMINAL_SETTINGS_NS, TERMINAL_SETTINGS_BASE } from './settings.js';
 export type { PtySpawnOptions, PtyExitInfo } from './pty-session.js';
 /** Path of the interactive terminal upgrade route. */
 export declare const WS_PATH = "/dsh-terminal/ws";

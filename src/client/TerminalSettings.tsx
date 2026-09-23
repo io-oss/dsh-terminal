@@ -7,6 +7,7 @@
 
 import { createElement as h, useEffect, useRef, useState } from 'react'
 import type { ReactElement, ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
+import type { TerminalScope } from './settings-scope.ts'
 import {
   DEFAULT_TOGGLE_SHORTCUT,
   canonicalChordOf,
@@ -15,14 +16,6 @@ import {
 } from './shortcut.ts'
 
 export type Translate = (key: string, params?: Record<string, unknown>) => string
-
-/** Minimal settings-scope surface this section needs (host: dsh-client-ui-settings). */
-export interface TerminalScope<T> {
-  getSnapshot(): { status: 'loading' | 'ready' | 'unavailable'; value?: T }
-  subscribe(listener: () => void): () => void
-  set(field: string, value: unknown): Promise<void>
-  unset(field: string): Promise<void>
-}
 
 export interface TerminalSettingsValue {
   fontFamily: string

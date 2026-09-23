@@ -6769,6 +6769,19 @@ function pasteSession(id) {
 }
 
 // src/client/TerminalDock.tsx
+function pickIcon(primary, legacy) {
+  const picked = primary ?? legacy;
+  if (picked === void 0) {
+    throw new Error("[dsh-terminal] host primitives ship neither icon generation");
+  }
+  return picked;
+}
+var IconPlus = pickIcon(import_dsh_client_ui_primitives.IconPlusOutlineRegular, import_dsh_client_ui_primitives.IconPlusOutline16);
+var IconClose = pickIcon(import_dsh_client_ui_primitives.IconCloseOutlineRegular, import_dsh_client_ui_primitives.IconCloseOutline16);
+var IconChevronDown = pickIcon(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, import_dsh_client_ui_primitives.IconChevronDownOutline14);
+var IconCopy = pickIcon(import_dsh_client_ui_primitives.IconCopyOutlineRegular, import_dsh_client_ui_primitives.IconCopyOutline16);
+var IconTrash = pickIcon(import_dsh_client_ui_primitives.IconTrashOutlineRegular, import_dsh_client_ui_primitives.IconTrashOutline16);
+var IconFullscreen = pickIcon(import_dsh_client_ui_primitives.IconFullscreenOutlineRegular, import_dsh_client_ui_primitives.IconFullscreenOutline16);
 function ActionButton(props) {
   const { label, onClick, children, disabled } = props;
   return (0, import_react2.createElement)(import_dsh_client_ui_primitives.Tooltip, {
@@ -6874,7 +6887,7 @@ function TabButton(props) {
     }),
     active ? (0, import_react2.createElement)("span", {
       style: { display: "inline-flex", alignItems: "center", marginLeft: 2, flex: "none" },
-      children: ActionButton({ label: t("closeTab"), onClick: onClose, children: (0, import_react2.createElement)(import_dsh_client_ui_primitives.IconCloseOutline16, { size: 13 }) })
+      children: ActionButton({ label: t("closeTab"), onClick: onClose, children: (0, import_react2.createElement)(IconClose, { size: 13 }) })
     }) : null
   );
 }
@@ -7061,13 +7074,13 @@ function TerminalDock(props) {
       (0, import_react2.createElement)(
         "div",
         { style: actionsStyle },
-        ActionButton({ label: t("newTab"), onClick: handleNew, children: (0, import_react2.createElement)(import_dsh_client_ui_primitives.IconPlusOutline16, { size: 14 }) }),
-        ActionButton({ label: t("copy"), onClick: () => copySession(activeId), disabled: activeId === null, children: (0, import_react2.createElement)(import_dsh_client_ui_primitives.IconCopyOutline16, { size: 14 }) }),
+        ActionButton({ label: t("newTab"), onClick: handleNew, children: (0, import_react2.createElement)(IconPlus, { size: 14 }) }),
+        ActionButton({ label: t("copy"), onClick: () => copySession(activeId), disabled: activeId === null, children: (0, import_react2.createElement)(IconCopy, { size: 14 }) }),
         ActionButton({ label: t("paste"), onClick: () => pasteSession(activeId), disabled: activeId === null, children: (0, import_react2.createElement)(PasteGlyph, {}) }),
-        ActionButton({ label: t("clear"), onClick: () => clearSession(activeId), disabled: activeId === null, children: (0, import_react2.createElement)(import_dsh_client_ui_primitives.IconTrashOutline16, { size: 14 }) }),
+        ActionButton({ label: t("clear"), onClick: () => clearSession(activeId), disabled: activeId === null, children: (0, import_react2.createElement)(IconTrash, { size: 14 }) }),
         (0, import_react2.createElement)("span", { style: { width: 1, height: 16, margin: "0 3px", background: "var(--dsw-alias-border-l3)" } }),
-        ActionButton({ label: maximized ? t("restore") : t("maximize"), onClick: toggleMaximize, children: (0, import_react2.createElement)(import_dsh_client_ui_primitives.IconFullscreenOutline16, { size: 14 }) }),
-        ActionButton({ label: t("collapse"), onClick: hidePanel, children: (0, import_react2.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutline14, { size: 14 }) })
+        ActionButton({ label: maximized ? t("restore") : t("maximize"), onClick: toggleMaximize, children: (0, import_react2.createElement)(IconFullscreen, { size: 14 }) }),
+        ActionButton({ label: t("collapse"), onClick: hidePanel, children: (0, import_react2.createElement)(IconChevronDown, { size: 14 }) })
       )
     ),
     (0, import_react2.createElement)(
@@ -7876,10 +7889,55 @@ var xterm_default = `/**
 // src/client/xterm-css.ts
 var XTERM_CSS = xterm_default;
 
+// src/client/settings-scope.ts
+var PENDING = { status: "loading" };
+function createScopeHolder(label) {
+  let current;
+  const listeners2 = /* @__PURE__ */ new Set();
+  const notify = () => {
+    for (const listener of [...listeners2]) listener();
+  };
+  return {
+    bind(scope) {
+      if (current !== void 0) return () => {
+      };
+      current = scope;
+      notify();
+      return () => {
+        if (current !== scope) return;
+        current = void 0;
+        notify();
+      };
+    },
+    getSnapshot() {
+      return current?.getSnapshot() ?? PENDING;
+    },
+    subscribe(listener) {
+      listeners2.add(listener);
+      return () => {
+        listeners2.delete(listener);
+      };
+    },
+    set(field, value) {
+      const scope = current;
+      if (scope === void 0) {
+        console.warn(`[dsh-terminal] ${label}: no settings service mounted; dropped "${field}"`);
+        return Promise.resolve(false);
+      }
+      return scope.set(field, value);
+    },
+    unset(field) {
+      const scope = current;
+      if (scope === void 0) return Promise.resolve(false);
+      return scope.unset(field);
+    }
+  };
+}
+
 // src/client/index.ts
 var NS = "dsh-terminal";
 var name = "dsh-terminal";
-var inject = ["slots", "locale", "settingsScope", "theme"];
+var inject = ["slots", "locale", "theme"];
 function clampFontSize(value) {
   return typeof value === "number" && Number.isFinite(value) ? Math.min(32, Math.max(8, value)) : 13;
 }
@@ -7925,7 +7983,17 @@ function currentWorkspaceRoot2(host) {
 function apply(ctx) {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), "dsh-terminal: dictionaries");
   const t = ctx.locale.bind(NS);
-  const scope = ctx.settingsScope.bind({ namespace: NS });
+  const scope = createScopeHolder(NS);
+  ctx.inject(["configForms"], (hostCtx) => {
+    const form = hostCtx.configForms?.get(NS);
+    return form === void 0 ? () => {
+    } : scope.bind(form);
+  });
+  ctx.inject(["settingsScope"], (hostCtx) => {
+    const bound = hostCtx.settingsScope?.bind({ namespace: NS });
+    return bound === void 0 ? () => {
+    } : scope.bind(bound);
+  });
   ctx.inject(["sessions"], (hostCtx) => {
     const host = hostCtx;
     setWorkspaceRootProvider(() => currentWorkspaceRoot2(host));

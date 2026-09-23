@@ -26,12 +26,19 @@ import { parseClientMessage, type ClientMessage, type OpenMessage } from './ws-p
 
 export const name = 'dsh-terminal'
 
-export { TerminalSettings, TERMINAL_SETTINGS_NS, TERMINAL_SETTINGS_BASE } from './settings.js'
+export { Config, TerminalSettings, TERMINAL_SETTINGS_NS, TERMINAL_SETTINGS_BASE } from './settings.js'
 export type { PtySpawnOptions, PtyExitInfo } from './pty-session.js'
 
-/** Structural subset of the host settings service. */
+/**
+ * Structural subset of the host settings service.
+ *
+ * `register` is the namespace registry of dsh <= 0.1.6 (`dsh-settings-file`).
+ * dsh >= 0.1.7 exposes `SettingsForms` on the same service name: it has no
+ * `register` and takes the plugin's own exported `Config` instead, so the
+ * member is optional here and the call site probes for it.
+ */
 interface SettingsService {
-  register(namespace: string, schema: unknown, options?: { base?: unknown }): unknown
+  register?(namespace: string, schema: unknown, options?: { base?: unknown }): unknown
 }
 
 interface SettingsHost {
@@ -153,9 +160,17 @@ export function apply(ctx: Context): void {
   // Settings namespace: the browser applies the terminal preferences itself;
   // this half exists so the choices survive restarts and show up in the
   // settings document. register() is owned by this fiber's lifecycle.
+  //
+  // dsh >= 0.1.7 moved plugin configuration onto the Loader entry's own
+  // `Config` (the exported `Config` in settings.ts) and the settings service
+  // became `SettingsForms`, which has no `register`. Nothing is lost there:
+  // the form writer persists volatile fields into the profile patch, and the
+  // browser side reads them through `ctx.configForms`.
   ctx.inject(['settings'], (hostCtx: Context) => {
     const settings = (hostCtx as unknown as SettingsHost).settings
-    settings.register(TERMINAL_SETTINGS_NS, TerminalSettings, { base: TERMINAL_SETTINGS_BASE })
+    const register = settings?.register
+    if (typeof register !== 'function') return () => {}
+    register.call(settings, TERMINAL_SETTINGS_NS, TerminalSettings, { base: TERMINAL_SETTINGS_BASE })
     return () => {}
   })
 

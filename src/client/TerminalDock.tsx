@@ -13,13 +13,20 @@ import { createElement as h, useCallback, useEffect, useRef } from 'react'
 import type { ReactElement, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react'
 import {
   Tooltip,
+  IconPlusOutlineRegular,
   IconPlusOutline16,
+  IconCloseOutlineRegular,
   IconCloseOutline16,
+  IconChevronDownOutlineRegular,
   IconChevronDownOutline14,
+  IconCopyOutlineRegular,
   IconCopyOutline16,
+  IconTrashOutlineRegular,
   IconTrashOutline16,
+  IconFullscreenOutlineRegular,
   IconFullscreenOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { IconProps } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   usePanelStore,
   getPanel,
@@ -41,6 +48,33 @@ import {
   copySession,
   pasteSession,
 } from './terminal.ts'
+
+/** An icon component of either naming generation (size travels in props). */
+type IconComponent = (props: IconProps) => ReactElement
+
+/**
+ * Pick the icon component this host actually ships.
+ *
+ * dsh <= 0.1.6 named every icon after its pixel size (`IconPlusOutline16`);
+ * dsh >= 0.1.7 renamed the whole set after its stroke weight
+ * (`IconPlusOutlineRegular` / `…Medium`) and moved the size into props. Both
+ * generations stay external in this bundle, so the one the host does not ship
+ * simply reads as `undefined` here instead of failing the build.
+ */
+function pickIcon(primary: IconComponent | undefined, legacy: IconComponent | undefined): IconComponent {
+  const picked = primary ?? legacy
+  if (picked === undefined) {
+    throw new Error('[dsh-terminal] host primitives ship neither icon generation')
+  }
+  return picked
+}
+
+const IconPlus = pickIcon(IconPlusOutlineRegular, IconPlusOutline16)
+const IconClose = pickIcon(IconCloseOutlineRegular, IconCloseOutline16)
+const IconChevronDown = pickIcon(IconChevronDownOutlineRegular, IconChevronDownOutline14)
+const IconCopy = pickIcon(IconCopyOutlineRegular, IconCopyOutline16)
+const IconTrash = pickIcon(IconTrashOutlineRegular, IconTrashOutline16)
+const IconFullscreen = pickIcon(IconFullscreenOutlineRegular, IconFullscreenOutline16)
 
 export type Translate = (key: string, params?: Record<string, unknown>) => string
 
@@ -144,7 +178,7 @@ function TabButton(props: {
     active
       ? h('span', {
           style: { display: 'inline-flex', alignItems: 'center', marginLeft: 2, flex: 'none' },
-          children: ActionButton({ label: t('closeTab'), onClick: onClose, children: h(IconCloseOutline16, { size: 13 }) }),
+          children: ActionButton({ label: t('closeTab'), onClick: onClose, children: h(IconClose, { size: 13 }) }),
         })
       : null,
   )
@@ -314,13 +348,13 @@ export function TerminalDock(props: TerminalDockProps): ReactElement {
         ),
       ),
       h('div', { style: actionsStyle },
-        ActionButton({ label: t('newTab'), onClick: handleNew, children: h(IconPlusOutline16, { size: 14 }) }),
-        ActionButton({ label: t('copy'), onClick: () => copySession(activeId), disabled: activeId === null, children: h(IconCopyOutline16, { size: 14 }) }),
+        ActionButton({ label: t('newTab'), onClick: handleNew, children: h(IconPlus, { size: 14 }) }),
+        ActionButton({ label: t('copy'), onClick: () => copySession(activeId), disabled: activeId === null, children: h(IconCopy, { size: 14 }) }),
         ActionButton({ label: t('paste'), onClick: () => pasteSession(activeId), disabled: activeId === null, children: h(PasteGlyph, {}) }),
-        ActionButton({ label: t('clear'), onClick: () => clearSession(activeId), disabled: activeId === null, children: h(IconTrashOutline16, { size: 14 }) }),
+        ActionButton({ label: t('clear'), onClick: () => clearSession(activeId), disabled: activeId === null, children: h(IconTrash, { size: 14 }) }),
         h('span', { style: { width: 1, height: 16, margin: '0 3px', background: 'var(--dsw-alias-border-l3)' } }),
-        ActionButton({ label: maximized ? t('restore') : t('maximize'), onClick: toggleMaximize, children: h(IconFullscreenOutline16, { size: 14 }) }),
-        ActionButton({ label: t('collapse'), onClick: hidePanel, children: h(IconChevronDownOutline14, { size: 14 }) }),
+        ActionButton({ label: maximized ? t('restore') : t('maximize'), onClick: toggleMaximize, children: h(IconFullscreen, { size: 14 }) }),
+        ActionButton({ label: t('collapse'), onClick: hidePanel, children: h(IconChevronDown, { size: 14 }) }),
       ),
     ),
     h('div', { style: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' } },

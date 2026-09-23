@@ -14,11 +14,13 @@ import { en, zh } from './locales.ts'
 import { TerminalDock } from './TerminalDock.tsx'
 import { TerminalButton } from './TerminalButton.tsx'
 import { TerminalSettings } from './TerminalSettings.tsx'
-import type { TerminalScope, TerminalSettingsValue } from './TerminalSettings.tsx'
+import type { TerminalSettingsValue } from './TerminalSettings.tsx'
 import { XTERM_CSS } from './xterm-css.ts'
 import { setAppearance, applyAppearanceToAll, applyThemeToAll, setWorkspaceRootProvider } from './terminal.ts'
 import { isShortcutCapturing, chordMatches } from './shortcut.ts'
 import { togglePanel } from './store.ts'
+import { createScopeHolder } from './settings-scope.ts'
+import type { TerminalScope } from './settings-scope.ts'
 
 const NS = 'dsh-terminal'
 
@@ -34,9 +36,19 @@ interface SlotsService {
   register(meta: Record<string, unknown>, component: unknown): unknown
 }
 
-/** The subset of the settingsScope service this plugin touches. */
+/** The subset of the `settingsScope` service this plugin touches (dsh <= 0.1.6). */
 interface SettingsScopeBinder {
   bind<T>(spec: { namespace: string }): TerminalScope<T>
+}
+
+/** Host face of the `settingsScope` service (dsh <= 0.1.6). */
+interface SettingsScopeHost {
+  settingsScope?: SettingsScopeBinder
+}
+
+/** Host face of the `configForms` service (dsh >= 0.1.7), keyed by Loader entry id. */
+interface ConfigFormsHost {
+  configForms?: { get<T>(entryId: string): TerminalScope<T> }
 }
 
 /** The client cordis context shape this plugin relies on. */
@@ -46,13 +58,15 @@ interface TerminalClientContext {
   inject(names: string[], callback: (ctx: unknown) => unknown): unknown
   locale: LocaleService
   slots: SlotsService
-  settingsScope: SettingsScopeBinder
 }
 
 export const name = 'dsh-terminal'
-// Object-form service injection; the package-level dsh.client.inject list
-// orders the bundle graph so the providers apply before this plugin.
-export const inject = ['slots', 'locale', 'settingsScope', 'theme']
+// `settingsScope` (dsh <= 0.1.6) is deliberately NOT a required service: dsh
+// 0.1.7 replaced it with `configForms`, and requiring the removed name would
+// keep this plugin from activating at all there. Both transports are bound
+// reactively in apply(); the package-level dsh.client.inject list still orders
+// the bundle graph so the providers apply before this plugin.
+export const inject = ['slots', 'locale', 'theme']
 
 /** Clamp the persisted font size into the schema range. */
 function clampFontSize(value: unknown): number {
@@ -160,7 +174,22 @@ function currentWorkspaceRoot(host: WorkspaceHost): string | undefined {
 export function apply(ctx: TerminalClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-terminal: dictionaries')
   const t = ctx.locale.bind(NS)
-  const scope = ctx.settingsScope.bind<TerminalSettingsValue>({ namespace: NS })
+
+  // Preferences transport. Every surface below talks to this stable holder, so
+  // the UI never has to know which host generation is running:
+  //   dsh >= 0.1.7 — `ctx.configForms.get('dsh-terminal')` (Loader entry Config)
+  //   dsh <= 0.1.6 — `ctx.settingsScope.bind({ namespace })`
+  // Exactly one of the two services exists per host, so only one callback ever
+  // runs; the holder ignores a late second bind regardless.
+  const scope = createScopeHolder<TerminalSettingsValue>(NS)
+  ctx.inject(['configForms'], (hostCtx: unknown) => {
+    const form = (hostCtx as ConfigFormsHost).configForms?.get<TerminalSettingsValue>(NS)
+    return form === undefined ? () => {} : scope.bind(form)
+  })
+  ctx.inject(['settingsScope'], (hostCtx: unknown) => {
+    const bound = (hostCtx as SettingsScopeHost).settingsScope?.bind<TerminalSettingsValue>({ namespace: NS })
+    return bound === undefined ? () => {} : scope.bind(bound)
+  })
 
   // Resolve the current workspace directory so freshly opened shells start
   // there instead of the host process cwd. `sessions` drives the lookup and is

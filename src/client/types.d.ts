@@ -30,12 +30,21 @@ declare module '@deepseek-ai/dsh-client-ui-primitives' {
     children: ReactElement
   }): ReactElement
 
+  // The icon set is exported under two naming generations: the weight-suffixed
+  // names of dsh >= 0.1.7 (size moves into props) and the pixel-suffixed names
+  // of dsh <= 0.1.6. Only the members this bundle names are declared, and the
+  // host supplies just one generation — the other reads as undefined.
+  export const IconPlusOutlineRegular: (props: IconProps) => ReactElement
+  export const IconCloseOutlineRegular: (props: IconProps) => ReactElement
+  export const IconChevronDownOutlineRegular: (props: IconProps) => ReactElement
+  export const IconCopyOutlineRegular: (props: IconProps) => ReactElement
+  export const IconTrashOutlineRegular: (props: IconProps) => ReactElement
+  export const IconFullscreenOutlineRegular: (props: IconProps) => ReactElement
+
   export const IconPlusOutline16: (props: IconProps) => ReactElement
   export const IconCloseOutline16: (props: IconProps) => ReactElement
   export const IconChevronDownOutline14: (props: IconProps) => ReactElement
   export const IconCopyOutline16: (props: IconProps) => ReactElement
   export const IconTrashOutline16: (props: IconProps) => ReactElement
-  export const IconRefreshOutline14: (props: IconProps) => ReactElement
   export const IconFullscreenOutline16: (props: IconProps) => ReactElement
-  export const IconPanelLeftOutline16: (props: IconProps) => ReactElement
 }

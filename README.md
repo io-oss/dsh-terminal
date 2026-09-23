@@ -62,7 +62,7 @@ dsh plugin --profile web add /绝对/路径/dsh-terminal
 ## 工作原理
 
 - **服务端（`lib/`，Cordis 插件）**
-  - 注册 `dsh-terminal` 设置命名空间（`fontFamily` / `fontSize` / `toggleKey`）；
+  - 注册 `dsh-terminal` 设置（`fontFamily` / `fontSize` / `toggleKey` / `toggleShortcut`）：dsh ≤ 0.1.6 走 `settings.register` 命名空间，dsh ≥ 0.1.7 走插件导出的 `Config`（Loader entry 配置表单，仅 `volatile` 字段可写）；
   - 注册 WebSocket 升级路由 `/dsh-terminal/ws`：先做 Host/Origin 围栏（宿主 `requestRejection` 优先，另有 loopback Origin 自检兜底），再用 `ws` 升级握手；
   - 每个连接惰性创建 **node-pty** shell（`$SHELL`，缺省 `/bin/bash`，`TERM=xterm-256color`），输出以二进制帧下发、输入以 JSON 帧写入、支持 `resize`；shell 退出后连接保持，可“重新打开”；
   - 环境变量按宿主规则清洗（剔除含 KEY/PASSWORD/SECRET/TOKEN 与 `DSH_*` 的项）；cwd 优先取**客户端随 `open` 帧上报的当前工作区目录**（校验为真实目录后使用），否则回退 `sandboxPolicy.workspaceRoot`，缺省 `process.cwd()`；
@@ -72,6 +72,22 @@ dsh plugin --profile web add /绝对/路径/dsh-terminal
   - xterm.js 内联进单文件 bundle（含其 CSS），配色读取 `--dsw-alias-*` 等设计令牌并订阅 `theme/change`；
   - 面板状态与按钮/快捷键共享同一份模块级 store；面板隐藏时标签仍存活。
 
+## 兼容性
+
+同一份产物在运行时按宿主能力自适应，已验证：
+
+| dsh 版本 | 客户端 UI | 设置读写通道 | 设置落盘位置 |
+| --- | --- | --- | --- |
+| 0.1.6-alpha.2 | ✅ | `ctx.settingsScope`（命名空间注册表） | `$DSH_HOME/settings.yaml` 的 `dsh-terminal:` 段 |
+| 0.1.7-alpha.1 | ✅ | `ctx.configForms`（Loader entry 的 `Config`） | 活动 profile 的 patch（如 `~/.dsh/profiles/web/cordis.patch.yml`）里 `dsh-terminal` entry 的 `config` |
+| 0.1.7-alpha.2 | ✅ | 同上 | 同上 |
+
+0.1.7 的宿主变更由插件内部吸收，安装与使用方式不变：
+
+- 设置服务由 `settingsScope` 改为 `configForms`（只允许 `volatile` 字段，持久化落到 profile patch）。客户端不再把 `settingsScope` 列为必需依赖，而是为两个服务各注册一条绑定路径，谁存在用谁；
+- 宿主图标集由 `IconXxx16` / `IconXxx14` 改名为 `IconXxxRegular` / `IconXxxMedium`。客户端同时引用两代名字，按宿主实际导出取用；
+- 从 0.1.6 升级到 0.1.7 时，若 `$DSH_HOME/settings.yaml` 里仍有 `dsh-terminal:` 段，宿主首次启动会自动导入 profile patch；只存在于 `settings.yaml.imported` 里的旧值不会被读取，需在设置页重新设置。
+
 ## 开发
 
 ```sh
@@ -79,7 +95,8 @@ npm run typecheck    # 服务端 + 客户端类型检查
 npm run build:server # tsc → lib/
 npm run build:client # esbuild → client/client.js（xterm CSS 以文本内联）
 npm run build        # 两者
-node scripts/smoke-server.mjs   # 服务端链路冒烟（模拟宿主 webServer）
+node scripts/smoke-server.mjs                      # 服务端链路冒烟（dsh ≤ 0.1.6 的 settings 形态）
+SMOKE_SETTINGS=forms node scripts/smoke-server.mjs # 同上，dsh ≥ 0.1.7 的 SettingsForms 形态
 ```
 
 改动源码后重新 `npm run build`，并**重启 `dsh web`**（服务端半场与客户端产物都要重启才生效），随后硬刷新浏览器。

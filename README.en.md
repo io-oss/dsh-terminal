@@ -62,7 +62,7 @@ Sessions keep running while the panel is hidden (like VS Code); closing a tab, r
 ## How it works
 
 - **Host half (`lib/`, a Cordis plugin)**
-  - registers the `dsh-terminal` settings namespace (`fontFamily` / `fontSize` / `toggleKey`);
+  - registers the `dsh-terminal` settings (`fontFamily` / `fontSize` / `toggleKey` / `toggleShortcut`): through `settings.register` on dsh ≤ 0.1.6, and through the plugin's exported `Config` (the Loader-entry configuration form, whose writable fields must be `volatile`) on dsh ≥ 0.1.7;
   - registers the WebSocket upgrade route `/dsh-terminal/ws` behind a Host/Origin fence (the host `requestRejection` when available, plus its own loopback-Origin check), then performs the `ws` handshake;
   - lazily spawns one **node-pty** shell per connection (`$SHELL`, default `/bin/bash`, `TERM=xterm-256color`); output is streamed as binary frames, input as JSON frames, with `resize` support; the connection stays open after the shell exits so a tab can be restarted;
   - scrubs the environment like the host does for children (drops KEY/PASSWORD/SECRET/TOKEN and `DSH_*` vars); the start directory prefers the **workspace root the browser reports** with each `open` frame (used once verified as a real directory), falling back to `sandboxPolicy.workspaceRoot`, then `process.cwd()`;
@@ -72,6 +72,22 @@ Sessions keep running while the panel is hidden (like VS Code); closing a tab, r
   - xterm.js (and its CSS) is inlined into the single-file bundle; colors read the `--dsw-alias-*` design tokens and follow `theme/change`;
   - one module-level store is shared by the dock, the button and the shortcut; tabs stay alive while the panel is hidden.
 
+## Compatibility
+
+One build adapts to the host at runtime. Verified:
+
+| dsh version | Browser UI | Settings transport | Where values persist |
+| --- | --- | --- | --- |
+| 0.1.6-alpha.2 | ✅ | `ctx.settingsScope` (namespace registry) | the `dsh-terminal:` section of `$DSH_HOME/settings.yaml` |
+| 0.1.7-alpha.1 | ✅ | `ctx.configForms` (the Loader entry's `Config`) | the `config` of the `dsh-terminal` entry in the active profile patch (e.g. `~/.dsh/profiles/web/cordis.patch.yml`) |
+| 0.1.7-alpha.2 | ✅ | same | same |
+
+The 0.1.7 host changes are absorbed inside the plugin; installing and using it is unchanged:
+
+- the settings service moved from `settingsScope` to `configForms` (which only accepts `volatile` fields and persists into the profile patch). The browser half no longer requires `settingsScope`; it registers one binding path per service and uses whichever exists;
+- the host icon set was renamed from `IconXxx16` / `IconXxx14` to `IconXxxRegular` / `IconXxxMedium`. The browser half references both generations and picks the one the host actually exports;
+- upgrading 0.1.6 → 0.1.7: a `dsh-terminal:` section still present in `$DSH_HOME/settings.yaml` is imported into the profile patch on first boot. Values that only live in `settings.yaml.imported` are not read, so set them again in the settings page.
+
 ## Development
 
 ```sh
@@ -79,7 +95,8 @@ npm run typecheck              # server + client type checks
 npm run build:server           # tsc → lib/
 npm run build:client           # esbuild → client/client.js (xterm CSS inlined as text)
 npm run build                  # both
-node scripts/smoke-server.mjs  # end-to-end smoke of the host half with a fake webServer
+node scripts/smoke-server.mjs                      # host-half smoke with the dsh ≤ 0.1.6 settings shape
+SMOKE_SETTINGS=forms node scripts/smoke-server.mjs # same with the dsh ≥ 0.1.7 SettingsForms shape
 ```
 
 After changing source, rebuild with `npm run build` and **restart `dsh web`** (both halves ship as built artifacts), then hard-refresh the browser.
